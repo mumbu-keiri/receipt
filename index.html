@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0E7A5F">
+<title>証憑アップロード</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #EAF3F0; --ink: #15302A; --sub: #4C6862; --green: #0E7A5F;
+    --ring: rgba(14,122,95,.16); --coral: #D9483A; --panel: #FFFFFF; --line: #CFE0DB; --chip: #F3F8F6;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F1D1A; --ink: #E4EFEC; --sub: #9BB4AE; --green: #1C9C79;
+      --ring: rgba(28,156,121,.22); --coral: #F0705F; --panel: #172925; --line: #27403A; --chip: #1D322D;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Hiragino Sans", "Noto Sans JP", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+  section { display: none; }
+  body[data-state="idle"] #idle, body[data-state="done"] #done, body[data-state="error"] #error { display: flex; }
+  body[data-state="camera"] #camera, body[data-state="review"] #review { display: flex; }
+
+  .center {
+    min-height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 28px; text-align: center;
+    padding: calc(32px + env(safe-area-inset-top)) 24px calc(32px + env(safe-area-inset-bottom));
+  }
+  h1 { font-size: 1.5rem; font-weight: 700; line-height: 1.5; letter-spacing: .03em; }
+  p.hint { font-size: 1rem; line-height: 1.75; color: var(--sub); }
+  .shoot {
+    width: min(66vw, 260px); aspect-ratio: 1; border: 0; border-radius: 50%;
+    background: var(--green); color: #fff; font: inherit; font-size: 1.35rem; font-weight: 700;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    box-shadow: 0 0 0 14px var(--ring); cursor: pointer;
+  }
+  .shoot:active { transform: scale(.95); }
+  .shoot svg { width: 64px; height: 64px; }
+  .pill {
+    min-width: 240px; padding: 18px 28px; border: 0; border-radius: 999px;
+    background: var(--green); color: #fff; font: inherit; font-size: 1.15rem; font-weight: 700; cursor: pointer;
+  }
+  .pill:disabled { opacity: .45; }
+  .link {
+    border: 0; background: none; color: var(--sub); font: inherit; font-size: .95rem;
+    text-decoration: underline; text-underline-offset: 4px; padding: 8px; cursor: pointer;
+  }
+  button:focus-visible, textarea:focus-visible { outline: 3px solid var(--coral); outline-offset: 3px; }
+
+  /* ===== 連続撮影モード ===== */
+  #camera { position: fixed; inset: 0; background: #000; color: #fff; flex-direction: column; }
+  #video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cam-top {
+    position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+    background: linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,0));
+  }
+  .cam-count { font-size: 1.1rem; font-weight: 700; }
+  .cam-quality { font-size: .8rem; opacity: .85; margin-top: 2px; }
+  .cam-quality.warn { color: #FFD27A; opacity: 1; }
+  .cam-close { border: 0; background: rgba(255,255,255,.18); color: #fff; font: inherit; padding: 8px 14px; border-radius: 999px; cursor: pointer; }
+  .cam-guide {
+    position: relative; z-index: 1; flex: 1; margin: 8px 24px; border: 2px dashed rgba(255,255,255,.45); border-radius: 18px;
+    pointer-events: none;
+  }
+  .cam-bottom {
+    position: relative; z-index: 2; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    padding: 18px 20px 10px;
+    background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,.6));
+  }
+  .last-thumb { width: 58px; height: 58px; border-radius: 12px; border: 2px solid #fff; object-fit: cover; background: #222; }
+  .shutter {
+    width: 84px; height: 84px; border-radius: 50%; border: 6px solid #fff; background: rgba(255,255,255,.25); cursor: pointer;
+  }
+  .shutter:active { background: #fff; transform: scale(.94); }
+  .cam-done {
+    justify-self: end; border: 0; border-radius: 14px; background: var(--green); color: #fff;
+    font: inherit; font-weight: 700; font-size: 1rem; padding: 14px 16px; cursor: pointer;
+  }
+  .cam-done:disabled { opacity: .45; }
+  .cam-native { position: relative; z-index: 2; text-align: center; background: rgba(0,0,0,.6); padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
+  .cam-native button { color: #fff; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 3; transition: opacity .25s; }
+  #flash.on { opacity: .7; transition: none; }
+
+  /* ===== 確認・説明入力 ===== */
+  #review { min-height: 100%; flex-direction: column; padding: calc(18px + env(safe-area-inset-top)) 14px 0; }
+  .rv-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 10px; }
+  .rv-head h2 { font-size: 1.15rem; }
+  .rv-head small { color: var(--sub); font-size: .85rem; }
+  .copy-all { flex: none; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font: inherit; font-size: .85rem; padding: 8px 12px; border-radius: 999px; cursor: pointer; }
+  .cards { display: flex; flex-direction: column; gap: 12px; padding-bottom: 190px; }
+  .card { background: var(--panel); border-radius: 16px; padding: 12px; display: grid; grid-template-columns: 84px 1fr; gap: 12px; }
+  .thumb { position: relative; width: 84px; height: 112px; border-radius: 10px; overflow: hidden; background: var(--chip); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb .pdf { height: 100%; display: grid; place-items: center; font-weight: 700; }
+  .thumb .st { position: absolute; left: 4px; bottom: 4px; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); color: var(--green); border: 0; font: inherit; font-weight: 700; }
+  .thumb .st svg { width: 16px; height: 16px; }
+  .card.error .st { background: var(--coral); color: #fff; cursor: pointer; }
+  .card.error img { opacity: .55; }
+  .del { position: absolute; right: 3px; top: 3px; width: 28px; height: 28px; border-radius: 50%; border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 1rem; cursor: pointer; }
+  .fields { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip { border: 1px solid var(--line); background: var(--chip); color: var(--ink); font: inherit; font-size: .85rem; padding: 6px 10px; border-radius: 999px; cursor: pointer; }
+  .chip[aria-pressed="true"] { background: var(--green); border-color: var(--green); color: #fff; }
+  textarea {
+    width: 100%; min-height: 44px; resize: vertical; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px;
+    background: var(--bg); color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.5;
+  }
+  .rv-dock {
+    position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line);
+  }
+  .rv-row { display: flex; gap: 10px; width: 100%; max-width: 520px; }
+  .more {
+    flex: none; border: 2px solid var(--green); background: var(--panel); color: var(--green);
+    font: inherit; font-weight: 700; font-size: 1rem; padding: 16px 14px; border-radius: 16px; cursor: pointer;
+  }
+  .submit { flex: 1; border: 0; border-radius: 16px; background: var(--green); color: #fff; font: inherit; font-weight: 700; font-size: 1.1rem; padding: 16px; cursor: pointer; }
+  .submit:disabled { opacity: .5; }
+  .notice { font-size: .9rem; color: var(--coral); line-height: 1.6; text-align: center; }
+  .notice:empty { display: none; }
+
+  .mark { width: 112px; height: 112px; border-radius: 50%; display: grid; place-items: center; background: var(--panel); }
+  .mark svg { width: 60px; height: 60px; }
+  #done .mark { color: var(--green); }
+  #error .mark { color: var(--coral); }
+  .mini-spin { width: 16px; height: 16px; border-radius: 50%; border: 3px solid var(--ring); border-top-color: var(--green); animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .mini-spin { animation-duration: 3s; } }
+</style>
+</head>
+<body data-state="idle">
+
+<section id="idle" class="center">
+  <h1>レシート・請求書を<br>撮って送る</h1>
+  <button class="shoot" id="start" type="button" aria-label="撮影をはじめる">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.6"/>
+    </svg>
+    撮影する
+  </button>
+  <p class="hint">シャッターを続けて押せば何枚でも撮れます。<br>撮り終わったら「完了」を押してください。</p>
+  <button class="link" id="pick" type="button">撮った写真から選ぶ</button>
+</section>
+
+<section id="camera" aria-label="連続撮影">
+  <video id="video" playsinline muted autoplay></video>
+  <div id="flash"></div>
+  <div class="cam-top">
+    <div>
+      <div class="cam-count" id="camCount">0枚</div>
+      <div class="cam-quality" id="camQuality"></div>
+    </div>
+    <button class="cam-close" id="camClose" type="button">閉じる</button>
+  </div>
+  <div class="cam-guide" aria-hidden="true"></div>
+  <div class="cam-bottom">
+    <img class="last-thumb" id="lastThumb" alt="" hidden>
+    <button class="shutter" id="shutter" type="button" aria-label="シャッター"></button>
+    <button class="cam-done" id="camDone" type="button" disabled>完了</button>
+  </div>
+  <div class="cam-native"><button class="link" id="useNative" type="button">A4の請求書など、高画質で撮る（通常カメラ）</button></div>
+</section>
+
+<section id="review">
+  <div class="rv-head">
+    <div><h2 id="rvTitle">0枚</h2><small>説明は任意です。わかる範囲で選んでください</small></div>
+    <button class="copy-all" id="copyAll" type="button">1枚目と同じにする</button>
+  </div>
+  <div class="cards" id="cards"></div>
+  <div class="rv-dock">
+    <p class="notice" id="notice"></p>
+    <div class="rv-row">
+      <button class="more" id="more" type="button">＋ 撮る</button>
+      <button class="submit" id="submit" type="button">送信を確定する</button>
+    </div>
+    <button class="link" id="pick2" type="button">撮った写真から追加する</button>
+  </div>
+</section>
+
+<section id="done" class="center" aria-live="polite">
+  <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+  <h1 id="doneTitle">送信しました</h1>
+  <button class="pill" id="again" type="button">続けて撮る</button>
+</section>
+
+<section id="error" class="center" aria-live="assertive">
+  <div class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 7v6M12 17h.01"/></svg></div>
+  <h1>完了の連絡ができませんでした</h1>
+  <p class="hint">写真は届いています。電波のよい場所で、もう一度押してください。</p>
+  <button class="pill" id="retryFinish" type="button">もう一度押す</button>
+</section>
+
+<input id="cam" type="file" accept="image/*" capture="environment" hidden>
+<input id="lib" type="file" accept="image/*,application/pdf" multiple hidden>
+<script>
+  /* ===== 設定（置き場所ごとに差し替え） ===== */
+  var CONFIG = {
+    api: 'https://script.google.com/macros/s/AKfycbxtM1jrSowAFR8p4F-eiIR95ZI198cWrEaUUtifbjyuIqE33hZqO8x-mHZOAvb7uHzL/exec',
+    key: new URLSearchParams(location.search).get('k') || '' // 合言葉はURLの ?k= で渡す（ページのソースには書かない）
+  };
+
+  var CHOICES = {
+    dept: ['宿泊', '飲食', 'レンタカー', 'ツアー', 'お土産', 'その他'],
+    type: ['領収書', '請求書', '納品書', 'その他'],
+    pay: ['現金', 'カード', '立替', '請求書払い']
+  };
+  var MIN_PIXELS = 3870000; // 電帳法スキャナ保存の目安（A4・約387万画素）
+  var ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var items = [];   // {key, file, url, status, fileId, removed, dept, type, pay, memo}
+  var seq = 0, pumping = false, finishing = false;
+  var stream = null, imageCapture = null;
+
+  function setState(s) { document.body.dataset.state = s; }
+  function live() { return items.filter(function (i) { return !i.removed; }); }
+
+  /* ===== サーバー呼び出し（GAS内なら google.script.run、外部サイトなら fetch） ===== */
+  var inGas = typeof google !== 'undefined' && google.script && google.script.run;
+  function api(action, body) {
+    body.k = CONFIG.key;
+    if (inGas) {
+      return new Promise(function (resolve, reject) {
+        var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
+        if (action === 'upload') r.uploadReceipt(body);
+        else if (action === 'delete') r.deleteUpload(body.k, body.id);
+        else r.finishBatch(body.k, body.items);
+      });
+    }
+    body.action = action;
+    return fetch(CONFIG.api, {
+      method: 'POST', body: JSON.stringify(body), credentials: 'omit',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.ok) throw new Error(j.error || '送信できませんでした');
+      return j;
+    });
+  }
+
+  /* ===== ボタン ===== */
+  $('start').onclick = openCamera;
+  $('more').onclick = openCamera;
+  $('pick').onclick = function () { $('lib').click(); };
+  $('pick2').onclick = function () { $('lib').click(); };
+  $('camClose').onclick = function () { closeCamera(); setState(live().length ? 'review' : 'idle'); render(); };
+  $('camDone').onclick = function () { closeCamera(); setState('review'); render(); };
+  $('shutter').onclick = shutter;
+  $('useNative').onclick = function () { closeCamera(); $('cam').click(); };
+  $('cam').onchange = function (e) { take(e.target); };
+  $('lib').onchange = function (e) { take(e.target); };
+  $('submit').onclick = finish;
+  $('retryFinish').onclick = finish;
+  $('copyAll').onclick = copyFirst;
+  $('again').onclick = function () { reset(); openCamera(); };
+
+  window.addEventListener('beforeunload', function (e) {
+    var s = document.body.dataset.state;
+    if (live().length && (s === 'review' || s === 'camera')) { e.preventDefault(); e.returnValue = ''; }
+  });
+
+  /* ===== 連続撮影モード（画面内カメラ） ===== */
+  function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('cam').click(); return; }
+    navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } }, audio: false
+    }).then(function (s) {
+      stream = s;
+      var track = s.getVideoTracks()[0];
+      var caps = null;
+      try { caps = track.getCapabilities ? track.getCapabilities() : null; } catch (e) {}
+      if (caps && caps.width && caps.height) {
+        return track.applyConstraints({ width: caps.width.max, height: caps.height.max })
+          .catch(function () {}).then(function () { return track; });
+      }
+      return track;
+    }).then(function (track) {
+      imageCapture = ('ImageCapture' in window) ? new ImageCapture(track) : null;
+      $('video').srcObject = stream;
+      return $('video').play();
+    }).then(function () {
+      setState('camera');
+      updateCamCount();
+      showQuality();
+    }).catch(function () {
+      closeCamera();
+      $('cam').click(); // 画面内カメラが使えない端末・環境は通常カメラ
+    });
+  }
+
+  function closeCamera() {
+    if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+    stream = null; imageCapture = null;
+  }
+
+  function showQuality() {
+    var v = $('video'), q = $('camQuality');
+    var px = v.videoWidth * v.videoHeight;
+    if (imageCapture) { q.textContent = '高画質で撮影します'; q.className = 'cam-quality'; return; }
+    if (!px) { q.textContent = ''; return; }
+    var man = Math.round(px / 10000);
+    if (px < MIN_PIXELS) {
+      q.textContent = '約' + man + '万画素：レシートはOK。A4の請求書は下の「通常カメラ」で';
+      q.className = 'cam-quality warn';
+    } else {
+      q.textContent = '約' + man + '万画素';
+      q.className = 'cam-quality';
+    }
+  }
+
+  function shutter() {
+    var f = $('flash');
+    f.classList.add('on'); setTimeout(function () { f.classList.remove('on'); }, 60);
+    if (navigator.vibrate) navigator.vibrate(25);
+    var p = imageCapture ? imageCapture.takePhoto().catch(function () { return grabFrame(); }) : grabFrame();
+    p.then(function (blob) {
+      if (!blob) return;
+      var file = new File([blob], 'camera_' + Date.now() + '.jpg', { type: blob.type || 'image/jpeg' });
+      addFiles([file]);
+      var t = $('lastThumb'); t.src = items[items.length - 1].url; t.hidden = false;
+      updateCamCount();
+    });
+  }
+
+  function grabFrame() {
+    var v = $('video');
+    var c = document.createElement('canvas');
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    c.getContext('2d').drawImage(v, 0, 0);
+    return new Promise(function (resolve) { c.toBlob(resolve, 'image/jpeg', 0.92); });
+  }
+
+  function updateCamCount() {
+    var n = live().length;
+    $('camCount').textContent = n + '枚';
+    $('camDone').disabled = !n;
+    $('camDone').textContent = n ? '完了（' + n + '）' : '完了';
+  }
+
+  /* ===== 写真の追加・送信キュー ===== */
+  function take(input) {
+    var files = Array.prototype.slice.call(input.files || []);
+    input.value = '';
+    if (!files.length) return;
+    addFiles(files);
+    setState('review');
+    render();
+  }
+
+  function addFiles(files) {
+    files.forEach(function (f) {
+      items.push({ key: ++seq, file: f, url: URL.createObjectURL(f), status: 'queued', dept: '', type: '', pay: '', memo: '' });
+    });
+    $('notice').textContent = '';
+    pump();
+  }
+
+  function pump() {
+    if (pumping) return;
+    var it = items.filter(function (i) { return i.status === 'queued' && !i.removed; })[0];
+    if (!it) { if (finishing) finish(); return; }
+    pumping = true;
+    it.status = 'uploading'; render();
+    toBase64(it.file).then(function (data) {
+      return api('upload', { name: it.file.name, mimeType: it.file.type, data: data });
+    }).then(function (res) {
+      it.fileId = res.id; it.status = 'done';
+      if (it.removed) api('delete', { id: it.fileId }).catch(function () {});
+    }).catch(function () {
+      it.status = 'error';
+    }).then(function () {
+      pumping = false; render(); pump();
+    });
+  }
+
+  function remove(key) {
+    var it = find(key); if (!it) return;
+    it.removed = true;
+    if (it.status === 'done' && it.fileId) api('delete', { id: it.fileId }).catch(function () {});
+    URL.revokeObjectURL(it.url);
+    if (!live().length) { reset(); return; }
+    render();
+  }
+
+  function retry(key) { var it = find(key); if (it) { it.status = 'queued'; render(); pump(); } }
+  function find(key) { return items.filter(function (i) { return i.key === key; })[0]; }
+
+  function copyFirst() {
+    var list = live(); if (list.length < 2) return;
+    var a = list[0];
+    list.slice(1).forEach(function (i) { i.dept = a.dept; i.type = a.type; i.pay = a.pay; });
+    render();
+  }
+
+  function finish() {
+    var list = live();
+    if (!list.length) { reset(); return; }
+    if (list.some(function (i) { return i.status === 'error'; })) {
+      finishing = false;
+      $('notice').textContent = '送れていない写真があります。！を押して送り直すか、×で取り消してください。';
+      setState('review'); render(); return;
+    }
+    finishing = true; render();
+    if (list.some(function (i) { return i.status !== 'done'; })) return; // 送信が終わり次第 pump から再度呼ばれる
+    api('finish', { items: list.map(function (i) { return { id: i.fileId, dept: i.dept, type: i.type, pay: i.pay, memo: i.memo }; }) })
+      .then(function () {
+        finishing = false;
+        $('doneTitle').textContent = list.length + '枚を送信しました';
+        items.forEach(function (i) { URL.revokeObjectURL(i.url); });
+        items = [];
+        setState('done');
+      }).catch(function () {
+        finishing = false;
+        setState('error');
+      });
+  }
+
+  function reset() {
+    items.forEach(function (i) { URL.revokeObjectURL(i.url); });
+    items = []; finishing = false; $('notice').textContent = '';
+    setState('idle');
+  }
+
+  /* ===== 確認画面 ===== */
+  function render() {
+    var list = live();
+    var sending = list.filter(function (i) { return i.status === 'queued' || i.status === 'uploading'; }).length;
+    $('rvTitle').textContent = list.length + '枚' + (sending ? '（送信中 ' + sending + '枚）' : '');
+    $('submit').textContent = finishing ? '送信中…' : '送信を確定する（' + list.length + '枚）';
+    $('submit').disabled = finishing || !list.length;
+    $('copyAll').hidden = list.length < 2;
+    if (document.body.dataset.state === 'camera') { updateCamCount(); return; }
+
+    var box = $('cards');
+    var ae = document.activeElement;
+    var focused = ae && ae.tagName === 'TEXTAREA' ? ae.dataset.key : null;
+    box.innerHTML = '';
+    list.forEach(function (i) {
+      var card = document.createElement('div');
+      card.className = 'card ' + i.status;
+      var isPdf = (i.file.type || '').indexOf('pdf') >= 0;
+
+      var th = document.createElement('div'); th.className = 'thumb';
+      if (isPdf) { var d = document.createElement('div'); d.className = 'pdf'; d.textContent = 'PDF'; th.appendChild(d); }
+      else { var img = document.createElement('img'); img.alt = '撮影した写真'; img.src = i.url; th.appendChild(img); }
+      var st;
+      if (i.status === 'error') {
+        st = document.createElement('button'); st.type = 'button'; st.textContent = '!';
+        st.setAttribute('aria-label', '送り直す'); st.onclick = function () { retry(i.key); };
+      } else {
+        st = document.createElement('div');
+        st.innerHTML = i.status === 'done' ? ICON_OK : '<div class="mini-spin"></div>';
+      }
+      st.className = 'st'; th.appendChild(st);
+      var del = document.createElement('button'); del.type = 'button'; del.className = 'del'; del.textContent = '×';
+      del.setAttribute('aria-label', 'この写真を取り消す'); del.onclick = function () { remove(i.key); };
+      th.appendChild(del);
+
+      var fields = document.createElement('div'); fields.className = 'fields';
+      ['dept', 'type', 'pay'].forEach(function (k) { fields.appendChild(chipRow(i, k)); });
+      var ta = document.createElement('textarea');
+      ta.rows = 1; ta.placeholder = 'メモ（例：ガソリン代、〇〇商店で備品）'; ta.maxLength = 200;
+      ta.value = i.memo; ta.dataset.key = String(i.key);
+      ta.oninput = function () { i.memo = ta.value; };
+      fields.appendChild(ta);
+
+      card.appendChild(th); card.appendChild(fields);
+      box.appendChild(card);
+      if (focused === String(i.key)) ta.focus();
+    });
+  }
+
+  function chipRow(item, kind) {
+    var row = document.createElement('div'); row.className = 'chips';
+    CHOICES[kind].forEach(function (label) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'chip'; b.textContent = label;
+      b.setAttribute('aria-pressed', item[kind] === label ? 'true' : 'false');
+      b.onclick = function () { item[kind] = item[kind] === label ? '' : label; render(); };
+      row.appendChild(b);
+    });
+    return row;
+  }
+
+  function toBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(String(r.result).split(',')[1]); };
+      r.onerror = function () { reject(new Error('写真を読み込めませんでした')); };
+      r.readAsDataURL(file); // 縮小・圧縮はしない（電子帳簿保存法の解像度要件）
+    });
+  }
+</script>
+</body>
+</html>
