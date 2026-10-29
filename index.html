@@ -226,6 +226,7 @@
       location.replace(u.toString());
     } catch (e) {}
   }
+  var lastError = ''; // 送信失敗の理由（サーバーからの文言）を画面に出す
   var camFailed = false; // 画面内カメラが一度失敗したら、以後は通常カメラを直接開く
 
   var CHOICES = {
@@ -242,7 +243,8 @@
   var stream = null, imageCapture = null;
 
   function setState(s) { document.body.dataset.state = s; }
-  if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
+  if (!CONFIG.key) $('camNotice').textContent = 'このリンクには合言葉が付いていないため、写真を送れません。経理から届いたリンク（最後に ?k=… が付いたもの）を開いてください。';
+  else if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
   function live() { return items.filter(function (i) { return !i.removed; }); }
 
   /* ===== サーバー呼び出し（GAS内なら google.script.run、外部サイトなら fetch） ===== */
@@ -401,8 +403,9 @@
     }).then(function (res) {
       it.fileId = res.id; it.status = 'done';
       if (it.removed) api('delete', { id: it.fileId }).catch(function () {});
-    }).catch(function () {
+    }).catch(function (e) {
       it.status = 'error';
+      lastError = (e && e.message) || '';
     }).then(function () {
       pumping = false; render(); pump();
     });
@@ -432,7 +435,9 @@
     if (!list.length) { reset(); return; }
     if (list.some(function (i) { return i.status === 'error'; })) {
       finishing = false;
-      $('notice').textContent = '送れていない写真があります。！を押して送り直すか、×で取り消してください。';
+      $('notice').textContent = (lastError.indexOf('URL') >= 0)
+        ? 'このURLでは送信できません（' + lastError + '）。経理から届いた最新のリンクを開き直してください。'
+        : '送れていない写真があります。！を押して送り直すか、×で取り消してください。' + (lastError ? '（理由：' + lastError + '）' : '');
       setState('review'); render(); return;
     }
     finishing = true; render();
