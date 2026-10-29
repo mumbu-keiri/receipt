@@ -152,6 +152,7 @@
   </button>
   <p class="hint">シャッターを続けて押せば何枚でも撮れます。<br>撮り終わったら「完了」を押してください。</p>
   <button class="link" id="pick" type="button">撮った写真から選ぶ</button>
+  <p class="notice" id="camNotice"></p>
 </section>
 
 <section id="camera" aria-label="連続撮影">
@@ -211,6 +212,22 @@
     key: new URLSearchParams(location.search).get('k') || '' // 合言葉はURLの ?k= で渡す（ページのソースには書かない）
   };
 
+  /* ===== LINEなどアプリ内ブラウザ対策 =====
+     LINE内ブラウザでは画面内カメラ（getUserMedia）が使えない・許可が出ないことがある。
+     1) LINEで開かれたら ?openExternalBrowser=1 を付けて開き直し、普段のブラウザ（Safari/Chrome）で開かせる
+     2) それでもアプリ内で開いている場合は、最初からスマホの通常カメラ（input capture）を使う */
+  var UA = navigator.userAgent || '';
+  var IN_LINE = /\bLine\//i.test(UA);
+  var IN_APP = IN_LINE || /FBAN|FBAV|Instagram|MicroMessenger/i.test(UA);
+  if (IN_LINE && !/[?&]openExternalBrowser=1/.test(location.search)) {
+    try {
+      var u = new URL(location.href);
+      u.searchParams.set('openExternalBrowser', '1'); // 合言葉 ?k= はそのまま引き継ぐ
+      location.replace(u.toString());
+    } catch (e) {}
+  }
+  var camFailed = false; // 画面内カメラが一度失敗したら、以後は通常カメラを直接開く
+
   var CHOICES = {
     dept: ['宿泊', '飲食', 'レンタカー', 'ツアー', 'お土産', 'その他'],
     type: ['領収書', '請求書', '納品書', 'その他'],
@@ -225,6 +242,7 @@
   var stream = null, imageCapture = null;
 
   function setState(s) { document.body.dataset.state = s; }
+  if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
   function live() { return items.filter(function (i) { return !i.removed; }); }
 
   /* ===== サーバー呼び出し（GAS内なら google.script.run、外部サイトなら fetch） ===== */
@@ -272,7 +290,8 @@
 
   /* ===== 連続撮影モード（画面内カメラ） ===== */
   function openCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('cam').click(); return; }
+    // 押した直後（同期）に開かないと、ブラウザがカメラ起動をブロックする
+    if (IN_APP || camFailed || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { $('cam').click(); return; }
     navigator.mediaDevices.getUserMedia({
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 4096 }, height: { ideal: 3072 } }, audio: false
     }).then(function (s) {
@@ -294,8 +313,13 @@
       updateCamCount();
       showQuality();
     }).catch(function () {
+      // 以前はここで $('cam').click() していたが、ボタンを押してから時間が経っているため
+      // ブラウザ（特にLINE内ブラウザ）に無視され、何も起きなかった。もう一度押してもらう。
+      camFailed = true;
       closeCamera();
-      $('cam').click(); // 画面内カメラが使えない端末・環境は通常カメラ
+      var msg = 'この画面では連続撮影カメラが使えませんでした。もう一度「撮影する」を押すと、スマホのカメラが開きます。';
+      if (live().length) { setState('review'); render(); $('notice').textContent = msg.replace('「撮影する」', '「＋ 撮る」'); }
+      else { setState('idle'); $('camNotice').textContent = msg; }
     });
   }
 
