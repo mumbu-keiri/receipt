@@ -121,6 +121,11 @@
     position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
     padding: 14px 16px calc(14px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line);
   }
+  .sender { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 4px; }
+  .sender label { font-size: .85rem; font-weight: 700; }
+  .sender label b { color: var(--coral); font-weight: 700; margin-left: 4px; }
+  .sender input { width: 100%; border: 2px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--panel); color: var(--ink); font: inherit; font-size: 1rem; }
+  .sender input.need { border-color: var(--coral); }
   .rv-row { display: flex; gap: 10px; width: 100%; max-width: 520px; }
   .more {
     flex: none; border: 2px solid var(--green); background: var(--panel); color: var(--green);
@@ -182,6 +187,10 @@
   <div class="cards" id="cards"></div>
   <div class="rv-dock">
     <p class="notice" id="notice"></p>
+    <div class="sender">
+      <label for="sender">送った人の名前<b>必須</b></label>
+      <input id="sender" type="text" maxlength="40" autocomplete="name" placeholder="例：山本">
+    </div>
     <div class="rv-row">
       <button class="more" id="more" type="button">＋ 撮る</button>
       <button class="submit" id="submit" type="button">送信を確定する</button>
@@ -243,6 +252,8 @@
   var stream = null, imageCapture = null;
 
   function setState(s) { document.body.dataset.state = s; }
+  try { $('sender').value = localStorage.getItem('mumbu_sender') || ''; } catch (e) {} // 前回の名前を自動で入れる
+  $('sender').oninput = function () { if (this.value.trim()) { this.classList.remove('need'); if ($('notice').textContent.indexOf('名前') >= 0) $('notice').textContent = ''; } };
   if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
   function live() { return items.filter(function (i) { return !i.removed; }); }
 
@@ -255,7 +266,7 @@
         var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(reject);
         if (action === 'upload') r.uploadReceipt(body);
         else if (action === 'delete') r.deleteUpload(body.k, body.id);
-        else r.finishBatch(body.k, body.items);
+        else r.finishBatch(body.k, body.items, body.sender);
       });
     }
     body.action = action;
@@ -432,6 +443,15 @@
   function finish() {
     var list = live();
     if (!list.length) { reset(); return; }
+    var who = $('sender').value.replace(/\s+/g, ' ').trim();
+    if (!who) { // 名前だけは必須
+      finishing = false;
+      $('sender').classList.add('need');
+      $('notice').textContent = '送った人の名前を入力してください。';
+      setState('review'); render(); $('sender').focus(); return;
+    }
+    $('sender').classList.remove('need');
+    try { localStorage.setItem('mumbu_sender', who); } catch (e) {}
     if (list.some(function (i) { return i.status === 'error'; })) {
       finishing = false;
       $('notice').textContent = (lastError.indexOf('URL') >= 0)
@@ -441,7 +461,7 @@
     }
     finishing = true; render();
     if (list.some(function (i) { return i.status !== 'done'; })) return; // 送信が終わり次第 pump から再度呼ばれる
-    api('finish', { items: list.map(function (i) { return { id: i.fileId, dept: i.dept, type: i.type, pay: i.pay, memo: i.memo }; }) })
+    api('finish', { sender: who, items: list.map(function (i) { return { id: i.fileId, dept: i.dept, type: i.type, pay: i.pay, memo: i.memo }; }) })
       .then(function () {
         finishing = false;
         $('doneTitle').textContent = list.length + '枚を送信しました';
