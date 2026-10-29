@@ -243,8 +243,7 @@
   var stream = null, imageCapture = null;
 
   function setState(s) { document.body.dataset.state = s; }
-  if (!CONFIG.key) $('camNotice').textContent = 'このリンクには合言葉が付いていないため、写真を送れません。経理から届いたリンク（最後に ?k=… が付いたもの）を開いてください。';
-  else if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
+  if (IN_APP) $('camNotice').textContent = 'LINEなどのアプリ内で開いています。撮影はスマホのカメラで1枚ずつになります。連続で撮りたいときは、右上のメニューから「ブラウザで開く」を選んでください。';
   function live() { return items.filter(function (i) { return !i.removed; }); }
 
   /* ===== サーバー呼び出し（GAS内なら google.script.run、外部サイトなら fetch） ===== */
